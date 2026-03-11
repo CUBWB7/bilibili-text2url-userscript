@@ -1,0 +1,7 @@
+node_modules
+coverage
+*.log
+docs/
+dist/*
+!dist/
+!dist/bilibili-text2url.user.js
