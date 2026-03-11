@@ -3,7 +3,7 @@
 // @namespace    https://github.com/CUBWB7/bilibili-text2url-userscript
 // @version      0.1.0
 // @description  将 Bilibili 页面中的纯文本网址转换为可点击链接，支持简介、评论区和动态正文。
-// @author       CUBWB7
+// @author       BiBaBo
 // @license      MIT
 // @homepageURL  https://github.com/CUBWB7/bilibili-text2url-userscript
 // @supportURL   https://github.com/CUBWB7/bilibili-text2url-userscript/issues
