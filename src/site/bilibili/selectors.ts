@@ -9,7 +9,8 @@ export const BILIBILI_TARGET_SELECTORS = {
     ".reply-content",
     ".sub-reply-item .reply-content",
     ".root-reply-container .reply-content",
-    ".reply-box .reply-content"
+    ".reply-box .reply-content",
+    "bili-rich-text"
   ],
   dynamicBody: [
     ".bili-rich-text__content",

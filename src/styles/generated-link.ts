@@ -5,8 +5,7 @@ export const GENERATED_LINK_STYLE_ID = "bili-text2url-style";
 export const GENERATED_LINK_STYLE = `
 .${GENERATED_LINK_CLASS}[${GENERATED_LINK_ATTR}="true"] {
   color: #1677ff;
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  text-decoration: none;
   word-break: break-all;
 }
 `;

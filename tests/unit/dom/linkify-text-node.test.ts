@@ -18,4 +18,20 @@ describe("linkifyTextNode", () => {
       "测评结果在线网页：https://modeltest.codermumu.top/。"
     );
   });
+
+  it("preserves trailing chinese file tags outside the generated link", () => {
+    document.body.innerHTML =
+      "<div>https://www.kdocs.cn/l/cd8zue8rZ5sD?f=301【文件】 模型的范式变迁.docx</div>";
+    const textNode = document.querySelector("div")?.firstChild as Text | null;
+
+    expect(textNode).not.toBeNull();
+    linkifyTextNode(textNode!);
+
+    const anchor = document.querySelector("a");
+    expect(anchor?.getAttribute("href")).toBe("https://www.kdocs.cn/l/cd8zue8rZ5sD?f=301");
+    expect(anchor?.textContent).toBe("https://www.kdocs.cn/l/cd8zue8rZ5sD?f=301");
+    expect(document.querySelector("div")?.textContent).toBe(
+      "https://www.kdocs.cn/l/cd8zue8rZ5sD?f=301【文件】 模型的范式变迁.docx"
+    );
+  });
 });

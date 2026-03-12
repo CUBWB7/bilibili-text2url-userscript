@@ -12,4 +12,19 @@ describe("findProcessableTargets", () => {
 
     expect(findProcessableTargets(document).length).toBe(2);
   });
+
+  it("includes bili-rich-text hosts used by the new comment component", () => {
+    document.body.innerHTML = `<div id="main"><bili-rich-text></bili-rich-text></div>`;
+
+    expect(findProcessableTargets(document).map((element) => element.tagName)).toContain("BILI-RICH-TEXT");
+  });
+
+  it("finds bili-rich-text hosts nested inside other shadow roots", () => {
+    const outerHost = document.createElement("bili-comment-renderer");
+    const outerShadow = outerHost.attachShadow({ mode: "open" });
+    outerShadow.innerHTML = `<div id="main"><bili-rich-text></bili-rich-text></div>`;
+    document.body.append(outerHost);
+
+    expect(findProcessableTargets(document).map((element) => element.tagName)).toContain("BILI-RICH-TEXT");
+  });
 });

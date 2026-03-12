@@ -21,8 +21,7 @@
   var GENERATED_LINK_STYLE = `
 .${GENERATED_LINK_CLASS}[${GENERATED_LINK_ATTR}="true"] {
   color: #1677ff;
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  text-decoration: none;
   word-break: break-all;
 }
 `;
@@ -37,12 +36,53 @@
     return element?.closest("a") !== null;
   }
 
+  // src/core/dom/shadow-roots.ts
+  function isElementNode(node) {
+    return node.nodeType === 1;
+  }
+  function collectDirectElements(root) {
+    const elements = [];
+    if (isElementNode(root)) {
+      elements.push(root);
+    }
+    if ("querySelectorAll" in root) {
+      root.querySelectorAll("*").forEach((element) => {
+        elements.push(element);
+      });
+    }
+    return elements;
+  }
+  function getSearchRoots(root) {
+    const roots = [root];
+    for (const element of collectDirectElements(root)) {
+      if (element.shadowRoot) {
+        roots.push(...getSearchRoots(element.shadowRoot));
+      }
+    }
+    return roots;
+  }
+  function findClosestAcrossShadow(node, selector) {
+    let current = isElementNode(node) ? node : node.parentNode;
+    while (current) {
+      if (isElementNode(current) && current.matches(selector)) {
+        return current;
+      }
+      if (current.parentNode) {
+        current = current.parentNode;
+        continue;
+      }
+      const root = current.getRootNode();
+      current = root instanceof ShadowRoot ? root.host : null;
+    }
+    return null;
+  }
+
   // src/core/dom/collect-text-nodes.ts
   var BLOCKED_SELECTOR = "a, button, input, textarea, script, style, code, pre, [contenteditable=''], [contenteditable='true']";
   function getDocument(root) {
     return root instanceof Document ? root : root.ownerDocument ?? document;
   }
-  function collectTextNodes(root) {
+  function collectTextNodesFromSingleRoot(root) {
     const doc = getDocument(root);
     const nodeFilter = doc.defaultView?.NodeFilter ?? NodeFilter;
     const walker = doc.createTreeWalker(root, nodeFilter.SHOW_TEXT, {
@@ -66,6 +106,13 @@
     while (current) {
       nodes.push(current);
       current = walker.nextNode();
+    }
+    return nodes;
+  }
+  function collectTextNodes(root) {
+    const nodes = [];
+    for (const searchRoot of getSearchRoots(root)) {
+      nodes.push(...collectTextNodesFromSingleRoot(searchRoot));
     }
     return nodes;
   }
@@ -140,7 +187,11 @@
   }
 
   // src/core/url/find-url-candidates.ts
-  var CANDIDATE_RE = /(?:https?:\/\/|www\.)(?:[^\s<>"'`]+)|(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}(?::\d{2,5})?(?:[/?#][^\s<>"'`]*)?/giu;
+  var URL_PATH_CHARS = "[A-Za-z0-9._~:/?#\\[\\]@!$&'()*+,;=%-]";
+  var CANDIDATE_RE = new RegExp(
+    String.raw`(?:https?:\/\/|www\.)${URL_PATH_CHARS}+|(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}(?::\d{2,5})?(?:[/?#]${URL_PATH_CHARS}*)?`,
+    "giu"
+  );
   var INVALID_PREVIOUS_CHAR_RE = /[A-Za-z0-9@_-]/;
   var INVALID_NEXT_CHAR_RE = /[A-Za-z0-9_-]/;
   function hasValidBoundaries(input, start, end) {
@@ -240,6 +291,8 @@
     if (!doc.body || !doc.defaultView?.MutationObserver) {
       return null;
     }
+    const ElementCtor = doc.defaultView.Element;
+    const ShadowRootCtor = doc.defaultView.ShadowRoot;
     const batcher = createMutationBatcher({
       delayMs: options.delayMs ?? 80,
       processNodes(nodes) {
@@ -250,15 +303,37 @@
     });
     const observer = new doc.defaultView.MutationObserver((records) => {
       for (const record of records) {
+        if (record.target instanceof ElementCtor || record.target instanceof ShadowRootCtor) {
+          observeNestedShadowRoots(record.target);
+        }
         for (const node of record.addedNodes) {
+          if (node instanceof ElementCtor) {
+            observeNestedShadowRoots(node);
+          }
           batcher.enqueue(node);
         }
       }
     });
-    observer.observe(doc.body, {
-      childList: true,
-      subtree: true
-    });
+    const observedRoots = /* @__PURE__ */ new WeakSet();
+    function observeRoot(root) {
+      if (observedRoots.has(root)) {
+        return;
+      }
+      observer.observe(root, {
+        childList: true,
+        subtree: true
+      });
+      observedRoots.add(root);
+    }
+    function observeNestedShadowRoots(root) {
+      for (const searchRoot of getSearchRoots(root)) {
+        if (searchRoot instanceof ShadowRootCtor) {
+          observeRoot(searchRoot);
+        }
+      }
+    }
+    observeRoot(doc.body);
+    observeNestedShadowRoots(doc.body);
     return observer;
   }
 
@@ -288,7 +363,8 @@
       ".reply-content",
       ".sub-reply-item .reply-content",
       ".root-reply-container .reply-content",
-      ".reply-box .reply-content"
+      ".reply-box .reply-content",
+      "bili-rich-text"
     ],
     dynamicBody: [
       ".bili-rich-text__content",
@@ -308,13 +384,15 @@
   }
   function findProcessableTargets(root) {
     const targets = /* @__PURE__ */ new Set();
-    if (root instanceof Element && isProcessableTarget(root)) {
-      targets.add(root);
-    }
-    for (const selector of ALL_BILIBILI_TARGET_SELECTORS) {
-      root.querySelectorAll(selector).forEach((element) => {
-        targets.add(element);
-      });
+    for (const searchRoot of getSearchRoots(root)) {
+      if (searchRoot instanceof Element && isProcessableTarget(searchRoot)) {
+        targets.add(searchRoot);
+      }
+      for (const selector of ALL_BILIBILI_TARGET_SELECTORS) {
+        searchRoot.querySelectorAll(selector).forEach((element) => {
+          targets.add(element);
+        });
+      }
     }
     return [...targets];
   }
@@ -325,11 +403,7 @@
     return findProcessableTargets(node);
   }
   function findOwningTarget(node) {
-    const element = isElement(node) ? node : node.parentElement;
-    if (!element) {
-      return null;
-    }
-    const owningTarget = element.closest(ALL_BILIBILI_TARGET_SELECTORS.join(", "));
+    const owningTarget = findClosestAcrossShadow(node, ALL_BILIBILI_TARGET_SELECTORS.join(", "));
     return owningTarget instanceof HTMLElement ? owningTarget : null;
   }
 

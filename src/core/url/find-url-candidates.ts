@@ -1,8 +1,11 @@
 import { normalizeUrl } from "./normalize-url";
 import { trimTrailingPunctuation } from "./trim-trailing-punctuation";
 
-const CANDIDATE_RE =
-  /(?:https?:\/\/|www\.)(?:[^\s<>"'`]+)|(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}(?::\d{2,5})?(?:[/?#][^\s<>"'`]*)?/giu;
+const URL_PATH_CHARS = "[A-Za-z0-9._~:/?#\\[\\]@!$&'()*+,;=%-]";
+const CANDIDATE_RE = new RegExp(
+  String.raw`(?:https?:\/\/|www\.)${URL_PATH_CHARS}+|(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}(?::\d{2,5})?(?:[/?#]${URL_PATH_CHARS}*)?`,
+  "giu"
+);
 
 const INVALID_PREVIOUS_CHAR_RE = /[A-Za-z0-9@_-]/;
 const INVALID_NEXT_CHAR_RE = /[A-Za-z0-9_-]/;

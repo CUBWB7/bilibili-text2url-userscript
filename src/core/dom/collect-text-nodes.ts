@@ -1,4 +1,5 @@
 import { isInsideGeneratedLink } from "./processed-markers";
+import { getSearchRoots } from "./shadow-roots";
 
 const BLOCKED_SELECTOR =
   "a, button, input, textarea, script, style, code, pre, [contenteditable=''], [contenteditable='true']";
@@ -7,7 +8,7 @@ function getDocument(root: ParentNode): Document {
   return root instanceof Document ? root : root.ownerDocument ?? document;
 }
 
-export function collectTextNodes(root: ParentNode): Text[] {
+function collectTextNodesFromSingleRoot(root: ParentNode): Text[] {
   const doc = getDocument(root);
   const nodeFilter = doc.defaultView?.NodeFilter ?? NodeFilter;
 
@@ -38,6 +39,16 @@ export function collectTextNodes(root: ParentNode): Text[] {
   while (current) {
     nodes.push(current as Text);
     current = walker.nextNode();
+  }
+
+  return nodes;
+}
+
+export function collectTextNodes(root: ParentNode): Text[] {
+  const nodes: Text[] = [];
+
+  for (const searchRoot of getSearchRoots(root)) {
+    nodes.push(...collectTextNodesFromSingleRoot(searchRoot));
   }
 
   return nodes;
