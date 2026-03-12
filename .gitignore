@@ -5,7 +5,3 @@ docs/
 dist/*
 !dist/
 !dist/bilibili-text2url.user.js
-!docs/
-docs/*
-!docs/project-history.md
-!docs/beginner-guide.md
