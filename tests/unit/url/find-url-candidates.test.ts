@@ -7,6 +7,24 @@ describe("findUrlCandidates", () => {
     expect(matches.map((match) => match.displayText)).toEqual(["https://example.com"]);
   });
 
+  it("does not match bare domains outside the common tld allowlist", () => {
+    expect(findUrlCandidates("文档名是 soul.md")).toEqual([]);
+  });
+
+  it("does not match bare domains whose tld is not in the allowlist", () => {
+    expect(findUrlCandidates("备用站是 project.online")).toEqual([]);
+  });
+
+  it("still matches domains outside the allowlist when protocol is explicit", () => {
+    const matches = findUrlCandidates("go to https://soul.md now");
+    expect(matches.map((match) => match.displayText)).toEqual(["https://soul.md"]);
+  });
+
+  it("still matches domains outside the allowlist when the host is more explicit", () => {
+    const matches = findUrlCandidates("visit www.soul.md/docs");
+    expect(matches.map((match) => match.displayText)).toEqual(["www.soul.md/docs"]);
+  });
+
   it("matches bare domains with paths", () => {
     const matches = findUrlCandidates("visit modeltest.codermumu.top/test?a=1");
     expect(matches.map((match) => match.displayText)).toEqual(["modeltest.codermumu.top/test?a=1"]);

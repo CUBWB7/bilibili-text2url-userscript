@@ -142,9 +142,29 @@
     return result;
   }
 
+  // src/core/url/common-bare-tlds.ts
+  var COMMON_BARE_TLDS = /* @__PURE__ */ new Set([
+    "cc",
+    "cn",
+    "co",
+    "com",
+    "edu",
+    "gov",
+    "info",
+    "io",
+    "me",
+    "net",
+    "org",
+    "top",
+    "tv",
+    "vip",
+    "xyz"
+  ]);
+
   // src/core/url/validate-url-candidate.ts
   var HOST_LABEL_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i;
   var NUMERIC_DOTTED_RE = /^\d+(?:\.\d+)+$/;
+  var EXPLICIT_PROTOCOL_RE = /^https?:\/\//i;
   function toUrl(input) {
     const withProtocol = /^(?:https?:\/\/)/i.test(input) ? input : `https://${input}`;
     try {
@@ -152,6 +172,24 @@
     } catch {
       return null;
     }
+  }
+  function hasExplicitUrlSignal(candidate, url, labels) {
+    if (EXPLICIT_PROTOCOL_RE.test(candidate)) {
+      return true;
+    }
+    if (/^www\./i.test(candidate)) {
+      return true;
+    }
+    if (labels.length > 2) {
+      return true;
+    }
+    if (url.port) {
+      return true;
+    }
+    if (url.search || url.hash) {
+      return true;
+    }
+    return /^\/[^/]/.test(url.pathname);
   }
   function validateUrlCandidate(input) {
     const candidate = trimTrailingPunctuation(input).trim();
@@ -167,6 +205,9 @@
     const labels = hostname.split(".");
     const topLevelDomain = labels.at(-1);
     if (!topLevelDomain || !/^[a-z]{2,63}$/i.test(topLevelDomain)) {
+      return false;
+    }
+    if (labels.length === 2 && !hasExplicitUrlSignal(candidate, url, labels) && !COMMON_BARE_TLDS.has(topLevelDomain.toLowerCase())) {
       return false;
     }
     return labels.every((label) => HOST_LABEL_RE.test(label));
