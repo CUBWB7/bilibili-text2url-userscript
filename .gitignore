@@ -1,6 +1,7 @@
 node_modules
 coverage
 *.log
+AGENTS.md
 docs/
 dist/*
 !dist/
