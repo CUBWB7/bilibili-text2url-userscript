@@ -1,4 +1,6 @@
+import { collectInlineSegmentGroups } from "../core/dom/collect-inline-segment-groups";
 import { collectTextNodes } from "../core/dom/collect-text-nodes";
+import { linkifySegmentGroup } from "../core/dom/linkify-segment-group";
 import { linkifyTextNode } from "../core/dom/linkify-text-node";
 import { startObserver } from "../core/watch/start-observer";
 import { isSupportedBilibiliPage } from "../site/bilibili/page-type";
@@ -32,8 +34,26 @@ function injectGeneratedLinkStyles(doc: Document): void {
 
 function processTarget(target: HTMLElement): number {
   let changedCount = 0;
+  const protectedNodes = new Set<Text>();
+  const groups = collectInlineSegmentGroups(target);
+
+  for (const group of groups) {
+    if (group.pieces.length > 1 || group.trailingOpaqueInlineBoundary) {
+      group.pieces.forEach((piece) => {
+        protectedNodes.add(piece.node);
+      });
+    }
+
+    if (linkifySegmentGroup(group)) {
+      changedCount += 1;
+    }
+  }
 
   for (const node of collectTextNodes(target)) {
+    if (protectedNodes.has(node)) {
+      continue;
+    }
+
     if (linkifyTextNode(node)) {
       changedCount += 1;
     }
