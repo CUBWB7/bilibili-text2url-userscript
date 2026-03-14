@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Bilibili使用增强-文本网址转链接（Text to URL）
 // @namespace    https://github.com/CUBWB7/bilibili-text2url-userscript
-// @version      0.1.2
+// @version      0.1.3
 // @description  将 Bilibili 页面中的纯文本网址转换为可点击链接，支持简介、评论区和动态正文。
 // @author       BiBaBo7
 // @license      MIT
@@ -77,8 +77,165 @@
     return null;
   }
 
-  // src/core/dom/collect-text-nodes.ts
+  // src/core/dom/collect-inline-segment-groups.ts
   var BLOCKED_SELECTOR = "a, button, input, textarea, script, style, code, pre, [contenteditable=''], [contenteditable='true']";
+  var BLOCK_BOUNDARY_TAGS = /* @__PURE__ */ new Set([
+    "ADDRESS",
+    "ARTICLE",
+    "ASIDE",
+    "BLOCKQUOTE",
+    "BR",
+    "DD",
+    "DIV",
+    "DL",
+    "DT",
+    "FIELDSET",
+    "FIGCAPTION",
+    "FIGURE",
+    "FOOTER",
+    "FORM",
+    "H1",
+    "H2",
+    "H3",
+    "H4",
+    "H5",
+    "H6",
+    "HEADER",
+    "HR",
+    "LI",
+    "MAIN",
+    "NAV",
+    "OL",
+    "P",
+    "SECTION",
+    "TABLE",
+    "TBODY",
+    "TD",
+    "TFOOT",
+    "TH",
+    "THEAD",
+    "TR",
+    "UL"
+  ]);
+  function createBuilder() {
+    return {
+      text: "",
+      pieces: [],
+      trailingOpaqueInlineBoundary: false
+    };
+  }
+  function isElement(node) {
+    return node.nodeType === Node.ELEMENT_NODE;
+  }
+  function isBlockedElement(element) {
+    if (isRecoverableSearchAnchor(element)) {
+      return false;
+    }
+    return element.matches(BLOCKED_SELECTOR) || isInsideGeneratedLink(element);
+  }
+  function isBlockBoundary(element) {
+    return BLOCK_BOUNDARY_TAGS.has(element.tagName);
+  }
+  function isRecoverableSearchAnchor(element) {
+    return element.tagName === "A" && element.getAttribute("data-type") === "search" && element.hasAttribute("data-keyword");
+  }
+  function flushBuilder(groups, builder) {
+    if (!builder.text.trim()) {
+      builder.text = "";
+      builder.pieces = [];
+      builder.trailingOpaqueInlineBoundary = false;
+      return;
+    }
+    groups.push({
+      text: builder.text,
+      pieces: [...builder.pieces],
+      trailingOpaqueInlineBoundary: builder.trailingOpaqueInlineBoundary
+    });
+    builder.text = "";
+    builder.pieces = [];
+    builder.trailingOpaqueInlineBoundary = false;
+  }
+  function appendText(builder, node, text) {
+    if (!text.trim()) {
+      return;
+    }
+    builder.pieces.push({
+      node,
+      start: builder.text.length,
+      end: builder.text.length + text.length
+    });
+    builder.text += text;
+    builder.trailingOpaqueInlineBoundary = false;
+  }
+  function markOpaqueInlineBoundary(builder) {
+    if (!builder.text) {
+      return;
+    }
+    builder.trailingOpaqueInlineBoundary = true;
+  }
+  function traverseNode(node, groups, builder) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      if (isInsideGeneratedLink(node)) {
+        return false;
+      }
+      const text = node.textContent ?? "";
+      if (!text.trim()) {
+        return false;
+      }
+      if (node.parentElement?.closest("[aria-hidden='true']")) {
+        return false;
+      }
+      appendText(builder, node, text);
+      return true;
+    }
+    if (!isElement(node)) {
+      return false;
+    }
+    if (node.matches("[aria-hidden='true']")) {
+      markOpaqueInlineBoundary(builder);
+      return false;
+    }
+    if (isBlockedElement(node)) {
+      flushBuilder(groups, builder);
+      return false;
+    }
+    if (isBlockBoundary(node)) {
+      flushBuilder(groups, builder);
+      let hasText2 = false;
+      for (const child of node.childNodes) {
+        hasText2 = traverseNode(child, groups, builder) || hasText2;
+      }
+      flushBuilder(groups, builder);
+      return hasText2;
+    }
+    let hasText = false;
+    for (const child of node.childNodes) {
+      hasText = traverseNode(child, groups, builder) || hasText;
+    }
+    if (!hasText) {
+      markOpaqueInlineBoundary(builder);
+    }
+    return hasText;
+  }
+  function collectFromSingleRoot(root) {
+    const groups = [];
+    const builder = createBuilder();
+    for (const child of root.childNodes) {
+      traverseNode(child, groups, builder);
+    }
+    flushBuilder(groups, builder);
+    return groups;
+  }
+  function collectInlineSegmentGroups(root) {
+    const groups = [];
+    for (const searchRoot of getSearchRoots(root)) {
+      groups.push(...collectFromSingleRoot(searchRoot));
+    }
+    return groups;
+  }
+
+  // src/core/dom/collect-text-nodes.ts
+  var BLOCKED_SELECTOR2 = "a, button, input, textarea, script, style, code, pre, [contenteditable=''], [contenteditable='true']";
   function getDocument(root) {
     return root instanceof Document ? root : root.ownerDocument ?? document;
   }
@@ -92,7 +249,7 @@
         if (!text || !parent) {
           return nodeFilter.FILTER_REJECT;
         }
-        if (parent.closest(BLOCKED_SELECTOR)) {
+        if (parent.closest(BLOCKED_SELECTOR2)) {
           return nodeFilter.FILTER_REJECT;
         }
         if (isInsideGeneratedLink(node)) {
@@ -271,6 +428,77 @@
     return matches;
   }
 
+  // src/core/dom/linkify-segment-group.ts
+  function resolveStart(pieces, offset) {
+    for (const piece of pieces) {
+      if (offset >= piece.start && offset < piece.end) {
+        return {
+          node: piece.node,
+          offset: offset - piece.start
+        };
+      }
+    }
+    return null;
+  }
+  function resolveEnd(pieces, offset) {
+    if (offset === 0) {
+      const firstPiece = pieces[0];
+      return firstPiece ? { node: firstPiece.node, offset: 0 } : null;
+    }
+    for (let index = 0; index < pieces.length; index += 1) {
+      const piece = pieces[index];
+      if (offset > piece.start && offset <= piece.end) {
+        return {
+          node: piece.node,
+          offset: offset - piece.start
+        };
+      }
+      if (offset === piece.start && index > 0) {
+        const previousPiece = pieces[index - 1];
+        return {
+          node: previousPiece.node,
+          offset: previousPiece.node.textContent?.length ?? 0
+        };
+      }
+    }
+    return null;
+  }
+  function createGeneratedAnchor(doc, href, text) {
+    const anchor = doc.createElement("a");
+    anchor.href = href;
+    anchor.target = "_blank";
+    anchor.rel = "noopener noreferrer";
+    anchor.className = GENERATED_LINK_CLASS;
+    anchor.setAttribute(GENERATED_LINK_ATTR, "true");
+    anchor.textContent = text;
+    return anchor;
+  }
+  function linkifySegmentGroup(group) {
+    if (group.pieces.length === 0) {
+      return false;
+    }
+    const match = findUrlCandidates(group.text).find((candidate) => /^https?:\/\//i.test(candidate.displayText));
+    if (!match) {
+      return false;
+    }
+    if (group.trailingOpaqueInlineBoundary && match.end === group.text.length) {
+      return false;
+    }
+    const start = resolveStart(group.pieces, match.start);
+    const end = resolveEnd(group.pieces, match.end);
+    if (!start || !end) {
+      return false;
+    }
+    const doc = start.node.ownerDocument;
+    const range = doc.createRange();
+    range.setStart(start.node, start.offset);
+    range.setEnd(end.node, end.offset);
+    range.deleteContents();
+    range.insertNode(createGeneratedAnchor(doc, match.href, match.displayText));
+    range.detach();
+    return true;
+  }
+
   // src/core/dom/linkify-text-node.ts
   function linkifyTextNode(node) {
     if (!node.parentNode || isInsideExistingAnchor(node) || isInsideGeneratedLink(node)) {
@@ -417,7 +645,7 @@
   var ALL_BILIBILI_TARGET_SELECTORS = Object.values(BILIBILI_TARGET_SELECTORS).flat();
 
   // src/site/bilibili/targets.ts
-  function isElement(node) {
+  function isElement2(node) {
     return node.nodeType === Node.ELEMENT_NODE;
   }
   function isProcessableTarget(element) {
@@ -438,7 +666,7 @@
     return [...targets];
   }
   function findTargetsWithin(node) {
-    if (!isElement(node)) {
+    if (!isElement2(node)) {
       return [];
     }
     return findProcessableTargets(node);
@@ -460,7 +688,22 @@
   }
   function processTarget(target) {
     let changedCount = 0;
+    const protectedNodes = /* @__PURE__ */ new Set();
+    const groups = collectInlineSegmentGroups(target);
+    for (const group of groups) {
+      if (group.pieces.length > 1 || group.trailingOpaqueInlineBoundary) {
+        group.pieces.forEach((piece) => {
+          protectedNodes.add(piece.node);
+        });
+      }
+      if (linkifySegmentGroup(group)) {
+        changedCount += 1;
+      }
+    }
     for (const node of collectTextNodes(target)) {
+      if (protectedNodes.has(node)) {
+        continue;
+      }
       if (linkifyTextNode(node)) {
         changedCount += 1;
       }
