@@ -4,6 +4,26 @@ import { describe, expect, it } from "vitest";
 import { bootstrap } from "../../../src/userscript/main";
 
 describe("bootstrap observer", () => {
+  it("observes text added after startup on watchlater pages", async () => {
+    document.body.innerHTML = '<div id="root"></div>';
+
+    bootstrap(document, {
+      locationLike: {
+        hostname: "www.bilibili.com",
+        pathname: "/list/watchlater/"
+      }
+    });
+
+    const reply = document.createElement("div");
+    reply.className = "reply-content";
+    reply.textContent = "稍后再看新增链接 https://watchlater-late.example.com";
+    document.body.append(reply);
+
+    await new Promise((resolve) => window.setTimeout(resolve, 120));
+
+    expect(document.querySelector("a")?.href).toBe("https://watchlater-late.example.com/");
+  });
+
   it("linkifies text added after startup", async () => {
     document.body.innerHTML = '<div id="root"></div>';
 

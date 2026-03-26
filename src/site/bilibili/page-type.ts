@@ -1,7 +1,10 @@
 export type BilibiliPageType = "video" | "dynamic" | "unsupported";
 
 export function getBilibiliPageType(locationLike: Pick<Location, "hostname" | "pathname">): BilibiliPageType {
-  if (locationLike.hostname === "www.bilibili.com" && locationLike.pathname.startsWith("/video/")) {
+  if (
+    locationLike.hostname === "www.bilibili.com" &&
+    (locationLike.pathname.startsWith("/video/") || locationLike.pathname.startsWith("/list/watchlater/"))
+  ) {
     return "video";
   }
 
